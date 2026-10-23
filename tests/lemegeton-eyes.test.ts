@@ -52,6 +52,61 @@ describe("yeux Lemegeton (firmware Minitel_Sigil)", () => {
   });
 });
 
+describe("visage : les yeux restent dans le cadre de la tête", () => {
+  // Géométrie de la tête, comme dans lemegetonEyes.ts (ovale 27 x 25, anneau de 14 %).
+  const HEAD = { rx: 27, ry: 25, thickness: 0.14 };
+  const pixels = (layer: number[][]) => {
+    const out: [number, number][] = [];
+    layer.forEach((line, row) =>
+      line.forEach((mask, col) => {
+        for (let sub = 0; sub < 6; sub++)
+          if (mask & (1 << sub)) out.push([col * 2 + (sub % 2) + 0.5, row * 3 + Math.floor(sub / 2) + 0.5]);
+      }),
+    );
+    return out;
+  };
+  /** Pixels d'oeil sur l'anneau ou au-delà. Le centre de la tete (qui dérive) se lit sur l'anneau. */
+  const overflow = (cells: ReturnType<LemegetonEyes["cells"]>) => {
+    const ring = pixels(cells.ring);
+    const cx = ring.reduce((sum, [x]) => sum + x, 0) / ring.length;
+    const cy = ring.reduce((sum, [, y]) => sum + y, 0) / ring.length;
+    return pixels(cells.eyes).filter(([x, y]) => Math.hypot((x - cx) / HEAD.rx, (y - cy) / HEAD.ry) > 1 - HEAD.thickness).length;
+  };
+  const emotions = ["joy", "sadness", "surprise", "anger", "fear", "disgust", "confusion", "love", "sleepy", "excitement"] as const;
+
+  it("aucun pixel d'oeil sur l'anneau ni au-delà, quelle que soit l'émotion, le regard ou la taille", () => {
+    for (const emotion of emotions)
+      for (const scale of [0.6, 1.2])
+        for (const [gx, gy] of [[0, 0], [-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+          const eyes = new LemegetonEyes(() => 0.5, 0);
+          eyes.setGaze(gx, gy);
+          eyes.play(emotion, 0);
+          for (let now = 0; now < 6000; now += 100) {
+            eyes.update(now, false, true);
+            expect(overflow(eyes.cells(true, scale)), `${emotion} x${scale} regard ${gx},${gy} à ${now} ms`).toBe(0);
+          }
+        }
+  }, 30000);
+
+  it("garde les yeux dans le cadre pendant que la tête dérive (mode autonome)", () => {
+    for (const seed of [0.05, 0.3, 0.5, 0.8, 0.95]) {
+      const eyes = new LemegetonEyes(() => seed, 0);
+      for (let now = 0; now < 120000; now += 90) {
+        eyes.update(now, true, true);
+        expect(overflow(eyes.cells(true, 1.2)), `graine ${seed} à ${now} ms`).toBe(0);
+      }
+    }
+  });
+
+  it("le regard déplace quand même les yeux (borné, pas supprimé)", () => {
+    const centered = new LemegetonEyes(() => 0.5, 0);
+    const looking = new LemegetonEyes(() => 0.5, 0);
+    looking.setGaze(1, 0);
+    looking.update(5000, false, true);
+    expect(JSON.stringify(looking.cells(true).eyes)).not.toBe(JSON.stringify(centered.cells(true).eyes));
+  });
+});
+
 describe("contrôleur : style Lemegeton", () => {
   afterEach(() => vi.useRealTimers());
   it("touches du firmware : chiffres = émotions, Retour = neutre", () => {

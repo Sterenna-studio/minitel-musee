@@ -91,6 +91,8 @@ const HOLD_MS = 1200;
 const HEAD_RX = 27;
 const HEAD_RY = 25;
 const HEAD_THICKNESS = 0.14;
+/** Marge entre un oeil et l'anneau de la tete, en fraction du rayon (un demi pseudo-pixel). */
+const HEAD_MARGIN = 0.02;
 const HEAD_DRIFT_PX = 7;
 /** Largest size factor that keeps the eyes (surprise, gaze) inside the canvas. */
 export const LEMEGETON_MAX_SCALE = 1.2;
@@ -267,17 +269,57 @@ export class LemegetonEyes {
     const gap = face ? EYE_GAP * 0.72 : EYE_GAP;
     const reachX = face ? 1.35 : 1;
     const reachY = face ? 1.2 : 1;
-    const ox = this.pose.dx + (this.gaze.x * GAZE_X_PX * reachX * styleScale) / 0.62;
-    const oy = this.pose.dy + (this.gaze.y * GAZE_Y_PX * reachY * styleScale) / 0.62 + (face ? this.head.y : 0);
-    const eye = (cx: number, rotation: number) => {
+    // Decalage des yeux par rapport au centre de la tete (regard + pose) ; la derive de la tete
+    // (head.x, head.y) deplace la tete ET les yeux ensemble.
+    let ox = this.pose.dx + (this.gaze.x * GAZE_X_PX * reachX * styleScale) / 0.62;
+    let oy = this.pose.dy + (this.gaze.y * GAZE_Y_PX * reachY * styleScale) / 0.62;
+    const shape = this.pose.shape;
+    const eye = (cx: number, cy: number, rotation: number) => {
       const a = (rotation * Math.PI) / 180;
       const rx = Math.max(0.7, EYE_RX * PIXEL_ASPECT * this.pose.sx * styleScale * scale);
       const ry = Math.max(0.7, EYE_RY * this.pose.sy * styleScale * scale);
-      return { cx, cy: EYE_CY + oy, c: Math.cos(a), s: Math.sin(a), rx, ry, bbox: Math.max(rx, ry) + 1.5 };
+      return { cx, cy, c: Math.cos(a), s: Math.sin(a), rx, ry, bbox: Math.max(rx, ry) + 1.5 };
     };
-    const left = eye(40 + this.head.x - gap / 2 + ox, this.pose.rotL);
-    const right = eye(40 + this.head.x + gap / 2 + ox, this.pose.rotR);
-    const shape = this.pose.shape;
+    const pair = (dx: number, dy: number) => {
+      const cy = EYE_CY + this.head.y + dy;
+      return [
+        eye(40 + this.head.x - gap / 2 + dx, cy, this.pose.rotL),
+        eye(40 + this.head.x + gap / 2 + dx, cy, this.pose.rotR),
+      ];
+    };
+    // Rayon normalise d'un point par rapport a l'ovale de la tete : 1 = bord exterieur de l'anneau.
+    const headRadius = (px: number, py: number) =>
+      Math.hypot((px - (40 + this.head.x)) / HEAD_RX, (py - (EYE_CY + this.head.y)) / HEAD_RY);
+    const inner = 1 - HEAD_THICKNESS - HEAD_MARGIN;
+    /** Vrai si le contour de l'oeil (ovale, ou coins du rectangle et du bol) est dans la tete. */
+    const insideHead = (g: ReturnType<typeof eye>) => {
+      const points: [number, number][] =
+        shape === "oval"
+          ? Array.from({ length: 32 }, (_, i) => [g.rx * Math.cos((i / 32) * 2 * Math.PI), g.ry * Math.sin((i / 32) * 2 * Math.PI)])
+          : [[-g.rx, -g.ry], [g.rx, -g.ry], [-g.rx, g.ry], [g.rx, g.ry]];
+      return points.every(([u, v]) => {
+        const dx = u * g.c - v * g.s;
+        const dy = u * g.s + v * g.c;
+        return headRadius(g.cx + dx / PIXEL_ASPECT, g.cy + dy) <= inner;
+      });
+    };
+    if (face) {
+      // Le regard et la pose ne doivent jamais faire sortir un oeil du cadre : on reduit le
+      // decalage (recherche par dichotomie) jusqu'a ce que les deux yeux tiennent dans la tete.
+      const fits = (t: number) => pair(ox * t, oy * t).every(insideHead);
+      if (!fits(1)) {
+        let lo = 0;
+        let hi = 1;
+        for (let i = 0; i < 14; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid;
+          else hi = mid;
+        }
+        ox *= lo;
+        oy *= lo;
+      }
+    }
+    const [left, right] = pair(ox, oy);
     const contains = (g: ReturnType<typeof eye>, px: number, py: number) => {
       const dx = (px - g.cx) * PIXEL_ASPECT;
       const dy = py - g.cy;
@@ -307,7 +349,11 @@ export class LemegetonEyes {
           const py = row * 3 + Math.floor(sub / 2) + 0.5;
           const bit = 1 << sub;
           if (face && ring(px, py)) rings[row][col] |= bit;
-          else if (contains(left, px, py) || contains(right, px, py)) eyes[row][col] |= bit;
+          // Filet de securite : meme si un oeil est trop grand pour la tete, il est coupe
+          // a l'anneau et ne le recouvre jamais.
+          else if ((contains(left, px, py) || contains(right, px, py)) && (!face || headRadius(px, py) <= inner)) {
+            eyes[row][col] |= bit;
+          }
         }
       }
     }
