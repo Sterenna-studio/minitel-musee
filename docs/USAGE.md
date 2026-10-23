@@ -238,6 +238,11 @@ Rendu mosaique, a partir du travail deja fait dans **minitel-face** :
 
 - `src/eyes/libZyraEyes.ts`, style par defaut : portage des yeux de `LibZyra`/`LibZyraEyes`.
   Ce sont des capsules continues de 7 x 3 cellules, aux coins arrondis, avec une pupille creusee.
+  Neuf humeurs, identiques a l'original (comparees rangee par rangee) : neutre, joie, colere,
+  surprise, fatigue, amour, et celles propres a Zyra, calme (yeux ouverts, cyan), curieux
+  (yeux ouverts, magenta) et concentre (les yeux de la colere). La peur et le degout de LibEyes
+  sont rapproches des formes surpris et fatigue. Voir la table de repli de lemegeton-core
+  (`canon/emotions.json`, bloc `fallbacks`).
 - `src/eyes/libEyes.ts`, style *Blocs* : portage de `LibEyes`, qui transpose deja
   Web-Eye-Animation (CyberAgentAILab, MIT), la librairie des yeux de l'overlay.
   On y trouve les formes par humeur et les sequences (`blink`, `joy`, `look_around`, `fall_asleep`...).

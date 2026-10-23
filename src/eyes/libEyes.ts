@@ -27,7 +27,11 @@ export type Mood =
   | "tired"
   | "fear"
   | "disgust"
-  | "love";
+  | "love"
+  // Humeurs de Zyra (minitel-face LibZyra) : LibEyes les ignore, comme l'original.
+  | "calm"
+  | "curious"
+  | "focused";
 export type EyeOverride = "closed" | "half" | "wink_left" | "wink_right";
 
 export interface EyeState {

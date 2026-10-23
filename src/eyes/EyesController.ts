@@ -92,6 +92,9 @@ const MOOD_LABELS: Record<Mood, string> = {
   fear: "PEUR",
   disgust: "DEGOUT",
   love: "AMOUR",
+  calm: "CALME",
+  curious: "CURIEUX",
+  focused: "FOCUS",
 };
 
 export interface EyesSnapshot {
