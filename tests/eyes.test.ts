@@ -94,7 +94,37 @@ describe("yeux Zyra", () => {
     expect(buildZyraEyes({ ...initialEyeState, mood: "love" }, "AUTO")[0][2]).toBe("MAGENTA");
     expect(buildZyraEyes({ ...initialEyeState, mood: "love" }, "VERT")[0][2]).toBe("VERT");
   });
-  it("garde le style LibEyes (barres) au choix", () => {
+  it("reprend calme, curieux et concentre de LibZyra", () => {
+    // minitel-face LibZyra : calme et curieux sont des yeux ouverts (cyan, magenta),
+    // concentre a exactement les yeux de la colere. Comparaison faite sur les
+    // rangees de l'original le 2026-10-23 (9 humeurs, trois regards, identiques).
+    const open = (mood: "default" | "calm" | "curious", gazeX = 0) =>
+      buildZyraEyes({ ...initialEyeState, mood, gazeX }, "AUTO");
+    const recolor = (rows: ReturnType<typeof open>, color: string) => rows.map(([r, c, , bytes]) => [r, c, color, bytes]);
+    for (const gazeX of [-1, 0, 1]) {
+      expect(open("calm", gazeX)).toEqual(recolor(open("default", gazeX), "CYAN"));
+      expect(open("curious", gazeX)).toEqual(recolor(open("default", gazeX), "MAGENTA"));
+      expect(buildZyraEyes({ ...initialEyeState, mood: "focused", gazeX }, "AUTO")).toEqual(
+        buildZyraEyes({ ...initialEyeState, mood: "angry", gazeX }, "AUTO"),
+      );
+    }
+    // Palette fixe : la couleur choisie l'emporte, calme et curieux ressemblent au neutre.
+    expect(buildZyraEyes({ ...initialEyeState, mood: "curious" }, "VERT")).toEqual(
+      buildZyraEyes(initialEyeState, "VERT"),
+    );
+  });
+  it("laisse LibEyes ignorer les humeurs de Zyra, comme l'original", () => {
+    for (const mood of ["calm", "curious", "focused"] as const)
+      expect(buildEyes({ ...initialEyeState, mood })).toEqual(buildEyes(initialEyeState));
+  });
+  it("nomme les humeurs de Zyra a l'ecran", () => {
+    const eyes = new EyesController({ style: "zyra" });
+    for (const [mood, label] of [["calm", "CALME"], ["curious", "CURIEUX"], ["focused", "FOCUS"]] as const) {
+      eyes.setMood(mood);
+      expect(eyes.getSnapshot().moodLabel).toBe(label);
+    }
+  });
+  it("garde le style LibEyes (blocs) au choix", () => {
     const eyes = new EyesController({ style: "libeyes", palette: "blanc" });
     expect(cell(eyes.getSnapshot().frame, 13, 7)).toMatchObject({ mosaic: 63, fg: 7 });
     eyes.setStyle("zyra");

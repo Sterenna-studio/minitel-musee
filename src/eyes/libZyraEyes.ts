@@ -1,7 +1,8 @@
 // Portage TypeScript des yeux de minitel-face/src/libs/LibZyra.js, utilises
 // seuls par LibZyraEyes (Sterenna) : capsule continue de 7 x 3 cellules aux
 // coins arrondis (demi-blocs), pupille creusee, couleurs selon l'humeur.
-// Les humeurs propres a LibEyes (peur, degout) sont rapprochees des formes Zyra.
+// Les humeurs propres a LibEyes (peur, degout) sont rapprochees des formes Zyra ;
+// celles propres a Zyra (calme, curieux, concentre) sont reprises de LibZyra.
 import type { RowPatch, VideotexColor } from "../videotex/mosaic";
 import type { EyeState } from "./libEyes";
 
@@ -96,9 +97,11 @@ export function buildZyraEyes(state: EyeState, color: VideotexColor | "AUTO"): R
   if (state.eyeState === "wink_right") return winkEyes(gazeX, "right", pick("BLANC"), pick("CYAN"));
   const mood = state.moodOverride ?? state.mood;
   if (mood === "happy") return happyEyes(pick("JAUNE"));
-  if (mood === "angry") return angryEyes(gazeX, pick("ROUGE"));
+  if (mood === "angry" || mood === "focused") return angryEyes(gazeX, pick("ROUGE"));
   if (mood === "surprised" || mood === "fear") return surprisedEyes(pick("BLANC"));
   if (mood === "tired" || mood === "disgust") return halfEyes(gazeX, pick("BLEU"));
   if (mood === "love") return loveEyes(pick("MAGENTA"));
+  if (mood === "curious") return openEyes(gazeX, pick("MAGENTA"));
+  if (mood === "calm") return openEyes(gazeX, pick("CYAN"));
   return openEyes(gazeX, pick("BLANC"));
 }
