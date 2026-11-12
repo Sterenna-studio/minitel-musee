@@ -14,6 +14,7 @@ import {
   type SequenceStep,
 } from "./libEyes";
 import { buildZyraEyes } from "./libZyraEyes";
+import { buildFace, isFaceStyle } from "./libFaces";
 import {
   EMOTIONS,
   EMOTION_COLORS,
@@ -39,16 +40,22 @@ export type EyePaletteId = (typeof EYE_PALETTES)[number]["id"];
 /**
  * Formes : capsules Zyra Eyes et yeux LibEyes (minitel-face), ovales
  * Lemegeton du firmware Minitel_Sigil (terminal de la mesh Sigil), seuls
- * ou sur une tete ronde.
+ * ou sur une tete ronde, et les trois visages Classic, Robot, Alien de
+ * minitel-face (une meme tete, trois habillages, couleurs fixes).
  */
 export const EYE_STYLES = [
   { id: "zyra", label: "Zyra (capsule)" },
   { id: "libeyes", label: "Blocs (LibEyes)" },
   { id: "lemegeton", label: "Lemegeton (yeux)" },
   { id: "lemegeton-visage", label: "Lemegeton (visage)" },
+  { id: "classic", label: "Visage Classic" },
+  { id: "robot", label: "Visage Robot" },
+  { id: "alien", label: "Visage Alien" },
 ] as const;
 export type EyeStyleId = (typeof EYE_STYLES)[number]["id"];
 const isLemegeton = (style: EyeStyleId) => style === "lemegeton" || style === "lemegeton-visage";
+/** Les visages ont leurs couleurs et leur taille : ni palette ni zoom. */
+export { isFaceStyle };
 /** Cadence du firmware (EYE_RENDER_MIN_MS) : une image toutes les 90 ms au plus. */
 const LEMEGETON_FRAME_MS = 90;
 /** The pointer keeps the gaze this long before the autonomous gaze resumes. */
@@ -80,11 +87,13 @@ function reference(style: EyeStyleId): SextantBox {
 /** Plus grande taille qui tient dans l'ecran pour ce style, arrondie au dixieme inferieur. */
 export function maxEyeScale(style: EyeStyleId): number {
   if (isLemegeton(style)) return LEMEGETON_MAX_SCALE;
+  if (isFaceStyle(style)) return 1;
   return Math.floor(maxScale(reference(style), LAST_EYE_ROW) * 10) / 10;
 }
 
 const MOOD_LABELS: Record<Mood, string> = {
   default: "NEUTRE",
+  neutral: "NEUTRE",
   happy: "JOIE",
   angry: "COLERE",
   surprised: "SURPRISE",
@@ -166,13 +175,14 @@ export class EyesController {
     const color = EYE_PALETTES.find((p) => p.id === this.palette)?.color ?? "CYAN";
     const frame = createScreen("YEUX DE LEMEGETON", "LEMEGETON");
     if (isLemegeton(this.style)) return this.buildLemegeton(frame, color);
-    const rows =
-      this.style === "zyra"
+    const rows = isFaceStyle(this.style)
+      ? buildFace(this.style, this.state)
+      : this.style === "zyra"
         ? buildZyraEyes(this.state, color)
         : buildEyes(this.state, color === "AUTO" ? "BLANC" : color);
     paintRows(
       frame,
-      this.scale === 1 ? rows : scaleRows(rows, this.scale, reference(this.style), LAST_EYE_ROW),
+      this.scale === 1 || isFaceStyle(this.style) ? rows : scaleRows(rows, this.scale, reference(this.style), LAST_EYE_ROW),
     );
     const mood = this.state.moodOverride ?? this.state.mood;
     const label = `HUMEUR : ${MOOD_LABELS[mood]}`;
@@ -265,7 +275,7 @@ export class EyesController {
     return this.render === "classique" ? SMOOTH_MAX_SCALE : maxEyeScale(this.style);
   }
   private clampScale(scale: number) {
-    if (!Number.isFinite(scale)) return 1;
+    if (!Number.isFinite(scale) || isFaceStyle(this.style)) return 1;
     return Math.round(Math.max(MIN_EYE_SCALE, Math.min(this.maxScale(), scale)) * 10) / 10;
   }
   setRender(render: EyeRenderId) {

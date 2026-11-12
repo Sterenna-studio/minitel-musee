@@ -21,6 +21,8 @@ const EMPTY = 0x20;
 
 export type Mood =
   | "default"
+  // Humeur de repos propre a l'Alien (minitel-face LibAlien), proche de "default".
+  | "neutral"
   | "happy"
   | "angry"
   | "surprised"
