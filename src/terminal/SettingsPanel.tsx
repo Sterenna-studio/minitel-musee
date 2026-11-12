@@ -5,6 +5,7 @@ import {
   EYE_PALETTES,
   EYE_RENDERS,
   EYE_STYLES,
+  isFaceStyle,
   MIN_EYE_SCALE,
   type EyePaletteId,
   type EyeRenderId,
@@ -38,6 +39,8 @@ export function SettingsPanel({
   useLang();
   const { effects, setEffects, reducedMotion, screenMode, chooseScreen, eyesSnapshot } =
     experience;
+  // Les visages Classic, Robot et Alien ont leurs couleurs et leur taille.
+  const fixedFace = eyesSnapshot.render === "mosaique" && isFaceStyle(eyesSnapshot.style);
   return (
     <aside className="settings-panel">
       <div className="panel-title">
@@ -124,7 +127,7 @@ export function SettingsPanel({
             </select>
           </label>
         )}
-        {screenMode === "yeux" && (
+        {screenMode === "yeux" && !fixedFace && (
           <label className="setting setting-range">
             <span>{t("settings.eyes.size")}</span>
             <input
@@ -139,7 +142,7 @@ export function SettingsPanel({
             <output>×{formatNumber(eyesSnapshot.scale)}</output>
           </label>
         )}
-        {screenMode === "yeux" && (
+        {screenMode === "yeux" && !fixedFace && (
           <label className="setting">
             <span>{t("settings.eyes.color")}</span>
             <select

@@ -257,6 +257,18 @@ Rendu mosaique, a partir du travail deja fait dans **minitel-face** :
   (0 joie ... 9 excitation), Envoi joie, Guide surprise, Annulation colere, Correction
   fatigue, Suite clin d'oeil, Repetition regard au hasard, Sommaire endormissement,
   Retour neutre. URL : `?ecran=yeux&yeux=lemegeton` ou `yeux=lemegeton-visage`.
+- `src/eyes/libFaces.ts`, styles *Visage Classic*, *Visage Robot* et *Visage Alien* :
+  portage de `LibClassic`, `LibRobot` et `LibAlien` de minitel-face, les trois
+  habillages d'une meme tete (memes lignes que le 3617 de Korigan). Les couleurs sont
+  celles du visage (peau jaune ou verte, LED, iris) et la taille reste a x1 : la palette
+  et le zoom sont masques pour ces styles. Les humeurs du canon que le visage ne possede
+  pas sont ramenees aux siennes (`fallbacks.engines` de `canon/emotions.json`) ; l'Alien
+  ajoute l'humeur `neutral`. Toutes les sequences de `libEyes.ts` (clignements, regard,
+  reactions) y jouent ; les sequences propres aux visages (`scan`, `boot`, `hypnotize`...)
+  ne sont pas encore portees. Chaque region possede des lignes entieres et les formes
+  sont symetriques par construction, comme l'exige `canon/VIDEOTEX.md`, ce que
+  `tests/eyes.test.ts` verifie pour toutes les humeurs. URL : `?ecran=yeux&yeux=classic`,
+  `yeux=robot` ou `yeux=alien`.
 - `src/eyes/EyesController.ts` : le moteur de `FaceRenderer`, avec les sequences et le
   mode autonome (clignements de 1 a 6 s dont 40 % doubles, regard de 2,2 a 5,2 s,
   reactions de 9 a 16 s). Le mode autonome est coupe en mouvement reduit.

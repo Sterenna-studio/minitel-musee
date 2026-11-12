@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { g1ToMosaic, paintRows } from "../src/videotex/mosaic";
 import { COLS, createScreen, plainText } from "../src/videotex/screen";
-import { buildEyes, initialEyeState } from "../src/eyes/libEyes";
+import { buildEyes, initialEyeState, type EyeState, type Mood } from "../src/eyes/libEyes";
 import { EyesController } from "../src/eyes/EyesController";
 import { buildZyraEyes } from "../src/eyes/libZyraEyes";
+import { buildFace, FACE_STYLES } from "../src/eyes/libFaces";
 import { targetShapes } from "../src/eyes/SmoothEyes";
 import { scaleRows, sextantBounds } from "../src/videotex/scale";
 
@@ -129,6 +130,141 @@ describe("yeux Zyra", () => {
     expect(cell(eyes.getSnapshot().frame, 13, 7)).toMatchObject({ mosaic: 63, fg: 7 });
     eyes.setStyle("zyra");
     expect(cell(eyes.getSnapshot().frame, 13, 7).mosaic).toBeUndefined();
+  });
+});
+
+describe("visages Classic, Robot, Alien", () => {
+  const faces = FACE_STYLES;
+  const moods: Mood[] = [
+    "default", "neutral", "happy", "angry", "surprised", "tired",
+    "fear", "disgust", "love", "calm", "curious", "focused",
+  ];
+  const states = (mood: Mood) => ({ ...initialEyeState, mood });
+  const painted = (style: (typeof faces)[number], state: EyeState) => {
+    const frame = createScreen("T");
+    paintRows(frame, buildFace(style, state));
+    return frame;
+  };
+  const mirrorMosaic = (m: number) =>
+    ((m & 1) << 1) | ((m & 2) >> 1) | ((m & 4) << 1) | ((m & 8) >> 1) | ((m & 16) << 1) | ((m & 32) >> 1);
+
+  it("n'emploie que des octets G1 et reste dans l'ecran, sous la ligne d'humeur", () => {
+    for (const style of faces)
+      for (const mood of moods)
+        for (const gazeX of [-1, 0, 1])
+          for (const rows of [buildFace(style, { ...states(mood), gazeX }), buildFace(style, { ...states(mood), eyeOpen: false })])
+            for (const [row, col, , bytes] of rows) {
+              expect(row).toBeGreaterThanOrEqual(1);
+              expect(row).toBeLessThanOrEqual(21);
+              expect(col).toBeGreaterThanOrEqual(1);
+              expect(col + bytes.length - 1).toBeLessThanOrEqual(COLS);
+              for (const byte of bytes) expect((byte >= 0x20 && byte <= 0x3f) || (byte >= 0x60 && byte <= 0x7f)).toBe(true);
+            }
+  });
+
+  it("peint chaque ligne de la tete, sans trou, avec la meme silhouette pour toutes les humeurs", () => {
+    for (const style of faces) {
+      const headRows = (state: EyeState) => {
+        const frame = painted(style, state);
+        const rows: number[] = [];
+        for (let r = 1; r <= 21; r++)
+          if (Array.from({ length: COLS }, (_, i) => frame.cells[r * COLS + i]).some((c) => c.mosaic))
+            rows.push(r);
+        return rows;
+      };
+      const reference = headRows(initialEyeState);
+      expect(reference.length).toBeGreaterThan(9);
+      // Lignes consecutives : aucune ligne de la tete n'est restee vide.
+      reference.forEach((r, i) => i > 0 && expect(r).toBe(reference[i - 1] + 1));
+      for (const mood of moods) {
+        expect(headRows(states(mood))).toEqual(reference);
+        expect(headRows({ ...states(mood), eyeOpen: false })).toEqual(reference);
+      }
+    }
+  });
+
+  it("dessine des formes symetriques autour de la colonne 18", () => {
+    // Asymetries voulues : la jauge du Robot (ligne 12, elle se remplit de gauche a droite)
+    // et le sourcil unique de l'Alien curieux (lignes 7-8).
+    for (const style of faces)
+      for (const mood of moods) {
+        const frame = painted(style, states(mood));
+        for (let r = 1; r <= 21; r++) {
+          if (style === "robot" && r === 12) continue;
+          if (style === "alien" && mood === "curious" && (r === 7 || r === 8)) continue;
+          for (let c = 1; c <= 17; c++) {
+            const a = frame.cells[r * COLS + (c - 1)];
+            const z = frame.cells[r * COLS + (36 - c - 1)];
+            expect(`${style} ${mood} ${r}/${c}: ${mirrorMosaic(a.mosaic ?? 0)}`).toBe(`${style} ${mood} ${r}/${c}: ${z.mosaic ?? 0}`);
+            if (a.mosaic) expect(a.fg).toBe(z.fg);
+          }
+        }
+      }
+  });
+
+  it("suit le regard avec les deux yeux et ferme les yeux", () => {
+    for (const style of faces) {
+      const centre = JSON.stringify(buildFace(style, initialEyeState));
+      expect(JSON.stringify(buildFace(style, { ...initialEyeState, gazeX: -1 }))).not.toBe(centre);
+      expect(JSON.stringify(buildFace(style, { ...initialEyeState, gazeX: 1 }))).not.toBe(centre);
+      expect(JSON.stringify(buildFace(style, { ...initialEyeState, eyeState: "closed" }))).not.toBe(centre);
+      expect(JSON.stringify(buildFace(style, { ...initialEyeState, eyeOpen: false }))).toBe(
+        JSON.stringify(buildFace(style, { ...initialEyeState, eyeState: "closed" })),
+      );
+    }
+  });
+
+  it("ramene les humeurs du canon a celles de chaque visage", () => {
+    const same = (style: (typeof faces)[number], a: Mood, b: Mood) =>
+      expect(buildFace(style, states(a))).toEqual(buildFace(style, states(b)));
+    for (const style of faces) {
+      same(style, "fear", "surprised");
+      same(style, "disgust", "tired");
+      same(style, "love", "happy");
+    }
+    same("alien", "calm", "neutral");
+    same("alien", "neutral", "default");
+    // Seul l'Alien a un sourcil curieux ; les deux autres visages restent au repos.
+    expect(buildFace("alien", states("curious"))).not.toEqual(buildFace("alien", states("neutral")));
+    same("classic", "curious", "default");
+    same("robot", "curious", "default");
+  });
+
+  it("garde les couleurs du visage, sans palette ni zoom", () => {
+    const robot = new EyesController({ style: "robot", palette: "rouge", scale: 1.5 });
+    const snap = robot.getSnapshot();
+    expect(snap.scale).toBe(1);
+    expect(snap.maxScale).toBe(1);
+    expect(cell(snap.frame, 6, 11)).toMatchObject({ mosaic: 63, fg: 6 }); // cadre cyan
+    expect(cell(snap.frame, 8, 13)).toMatchObject({ mosaic: 63, fg: 2 }); // LED verte
+    const classic = new EyesController({ style: "classic", palette: "nitro" });
+    expect(cell(classic.getSnapshot().frame, 8, 12)).toMatchObject({ mosaic: 63, fg: 3 }); // peau jaune
+    const alien = new EyesController({ style: "alien" });
+    expect(cell(alien.getSnapshot().frame, 8, 12)).toMatchObject({ mosaic: 63, fg: 2 }); // peau verte
+    // Revenir a un style de yeux redonne la taille.
+    alien.setStyle("zyra");
+    alien.setScale(1.5);
+    expect(alien.getSnapshot().scale).toBe(1.5);
+  });
+
+  it("joue clignements, humeurs et touches Minitel sur les visages", async () => {
+    vi.useFakeTimers();
+    for (const style of faces) {
+      const eyes = new EyesController({ style });
+      const open = JSON.stringify(eyes.getSnapshot().frame.cells);
+      const blink = eyes.play("blink");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(JSON.stringify(eyes.getSnapshot().frame.cells)).not.toBe(open);
+      await vi.advanceTimersByTimeAsync(200);
+      await blink;
+      expect(JSON.stringify(eyes.getSnapshot().frame.cells)).toBe(open);
+      eyes.key("Enter");
+      expect(plainText(eyes.getSnapshot().frame)).toContain("HUMEUR : JOIE");
+    }
+    const alien = new EyesController({ style: "alien" });
+    alien.setMood("neutral");
+    expect(alien.getSnapshot().moodLabel).toBe("NEUTRE");
+    vi.useRealTimers();
   });
 });
 
