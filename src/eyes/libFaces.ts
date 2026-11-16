@@ -7,7 +7,7 @@
 // possede des LIGNES ENTIERES, bords compris, pour que son remplacement ne troue
 // jamais la silhouette.
 import type { RowPatch, VideotexColor } from "../videotex/mosaic";
-import type { EyeState, Mood } from "./libEyes";
+import type { EyeState, Mood, SequenceStep } from "./libEyes";
 
 export const FACE_STYLES = ["classic", "robot", "alien"] as const;
 export type FaceStyleId = (typeof FACE_STYLES)[number];
@@ -177,6 +177,8 @@ const R_EYES = {
   open_left: robotEyes([FULL, FULL, FULL, FULL], [E, E, FULL, FULL]),
   open_right: robotEyes([FULL, FULL, FULL, FULL], [FULL, FULL, E, E]),
   closed: robotEyes([E, E, E, E], [MID, MID, MID, MID], "CYAN", "CYAN"),
+  error: robotEyes([FULL, E, E, FULL], [E, FULL, FULL, E], "ROUGE", "ROUGE"), // croix rouges
+  scan: robotEyes(fill(4), fill(4), "VERT", "VERT"), // LED pleines du balayage
 };
 
 // Bouche LED, lignes 14-15, colonnes 13 a 23.
@@ -187,6 +189,7 @@ const R_MOUTHS = {
   talk: robotMouth(sym([E, FULL, E, FULL, E], [FULL]), sym([E, FULL, E, FULL, E], [FULL]), "VERT", "CYAN"),
   happy: robotMouth(sym([E, FULL, E, E, E], [E]), sym([E, E, FULL, FULL, FULL], [FULL])), // coins hauts
   frown: robotMouth(sym([E, E, FULL, FULL, FULL], [FULL]), sym([E, FULL, E, E, E], [E]), "ROUGE"), // coins bas
+  error: robotMouth(sym([E, FULL, FULL, FULL, FULL], [FULL]), fill(11, E), "ROUGE"),
 };
 
 // Jauge de statut (ligne 12, colonnes 13 a 23) : asymetrie voulue, une jauge
@@ -204,9 +207,12 @@ const R_MOODS = ["default", "happy", "angry", "tired", "surprised"] as const;
 function robotFace(state: EyeState): Rows {
   const mood = nativeMood(moodOf(state), R_MOODS, "default") as (typeof R_MOODS)[number];
   // Le Robot n'a pas d'yeux mi-clos : il ferme les siens.
-  const eyes = isClosed(state) || state.eyeState === "half" ? R_EYES.closed : R_EYES[gazeOf(state)];
-  const mouth = { default: "idle", happy: "happy", angry: "frown", tired: "idle", surprised: "talk" }[mood] as
+  let eyes = isClosed(state) || state.eyeState === "half" ? R_EYES.closed : R_EYES[gazeOf(state)];
+  if (state.eyeState === "scan" || state.eyeState === "error") eyes = R_EYES[state.eyeState];
+  let mouth = { default: "idle", happy: "happy", angry: "frown", tired: "idle", surprised: "talk" }[mood] as
     keyof typeof R_MOUTHS;
+  if (state.eyeState === "error") mouth = "error";
+  else if (state.eyeState === "talk") mouth = "talk";
   return [...R_STRUCTURE, ...R_GAUGES[mood], ...eyes, ...R_MOUTHS[mouth]];
 }
 
@@ -301,6 +307,7 @@ function alienFace(state: EyeState): Rows {
   let eyes = A_EYES[gazeOf(state)];
   if (isClosed(state)) eyes = A_EYES.closed;
   else if (state.eyeState === "half") eyes = A_EYES.half_closed;
+  else if (state.eyeState === "dilated" || state.eyeState === "slit") eyes = A_EYES[state.eyeState];
   else if (mood === "surprised") eyes = A_EYES.dilated;
   else if (mood === "angry") eyes = A_EYES.slit;
   else if (mood === "tired") eyes = A_EYES.half_closed;
@@ -322,3 +329,88 @@ export function buildFace(style: FaceStyleId, state: EyeState): RowPatch[] {
       return alienFace(state);
   }
 }
+
+// ═══════════════════════ Sequences propres ═══════════════════════
+// Celles de minitel-face que seul un visage sait jouer (getSequences de chaque
+// bibliotheque). Les communes (clignements, regard, humeurs) restent celles de
+// LibEyes. `open_center` de l'original = plus de surcharge (null).
+const scanSweep: SequenceStep[] = [
+  { moodOverride: "focused", gazeX: -1, delayMs: 180 },
+  { gazeX: 0, delayMs: 180 },
+  { gazeX: 1, delayMs: 180 },
+  { gazeX: 0, moodOverride: null, delayMs: 0 },
+];
+const zyraBoot: SequenceStep[] = [
+  { eyeState: "closed", moodOverride: "calm", delayMs: 350 },
+  { eyeState: "half", delayMs: 300 },
+  { eyeState: null, moodOverride: "focused", delayMs: 250 },
+  { gazeX: -1, delayMs: 180 },
+  { gazeX: 1, delayMs: 180 },
+  { gazeX: 0, moodOverride: null, delayMs: 0 },
+];
+
+/** Sequences propres, par style ; leur nom est celui de minitel-face. */
+export const OWN_SEQUENCES: Record<string, Record<string, SequenceStep[]>> = {
+  zyra: { scan: scanSweep, boot: zyraBoot },
+  "zyra-visage": { scan: scanSweep, boot: zyraBoot },
+  robot: {
+    boot: [
+      { eyeState: "closed", moodOverride: "tired", delayMs: 200 },
+      { eyeState: "scan", moodOverride: "default", delayMs: 400 },
+      { eyeState: "closed", delayMs: 100 },
+      { eyeState: "scan", delayMs: 300 },
+      { eyeState: null, moodOverride: null, delayMs: 0 },
+    ],
+    error_flash: [
+      { eyeState: "error", moodOverride: "angry", delayMs: 300 },
+      { eyeState: "closed", delayMs: 200 },
+      { eyeState: "error", delayMs: 300 },
+      { eyeState: "closed", delayMs: 200 },
+      { eyeState: null, moodOverride: null, delayMs: 0 },
+    ],
+    scan: [
+      { eyeState: "scan", gazeX: -1, delayMs: 300 },
+      { eyeState: "scan", gazeX: 0, delayMs: 300 },
+      { eyeState: "scan", gazeX: 1, delayMs: 300 },
+      { eyeState: null, gazeX: 0, delayMs: 0 },
+    ],
+    // L'original alternait des humeurs 'talk' / 'idle' que le Robot ne
+    // connait pas : la bouche ne bougeait pas. Ici elle parle vraiment.
+    talk: [
+      { eyeState: "talk", delayMs: 150 },
+      { eyeState: null, delayMs: 150 },
+      { eyeState: "talk", delayMs: 150 },
+      { eyeState: null, delayMs: 150 },
+      { eyeState: "talk", delayMs: 150 },
+      { eyeState: null, delayMs: 0 },
+    ],
+  },
+  alien: {
+    hypnotize: [
+      { eyeState: "dilated", delayMs: 600 },
+      { eyeState: "slit", delayMs: 600 },
+      { eyeState: "dilated", delayMs: 600 },
+      { eyeState: "slit", delayMs: 600 },
+      { eyeState: null, delayMs: 0 },
+    ],
+    hiss: [
+      { eyeState: "slit", moodOverride: "angry", delayMs: 800 },
+      { eyeState: null, moodOverride: null, delayMs: 0 },
+    ],
+    curious: [
+      { moodOverride: "curious", gazeX: 1, delayMs: 600 },
+      { moodOverride: null, gazeX: 0, delayMs: 0 },
+    ],
+  },
+};
+
+/** Noms en clair des sequences propres (boutons de la galerie). */
+export const OWN_SEQUENCE_LABELS: Record<string, string> = {
+  scan: "Balayage",
+  boot: "Démarrage",
+  error_flash: "Erreur",
+  talk: "Parole",
+  hypnotize: "Hypnose",
+  hiss: "Sifflement",
+  curious: "Curiosité",
+};

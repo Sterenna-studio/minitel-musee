@@ -264,11 +264,20 @@ Rendu mosaique, a partir du travail deja fait dans **minitel-face** :
   et le zoom sont masques pour ces styles. Les humeurs du canon que le visage ne possede
   pas sont ramenees aux siennes (`fallbacks.engines` de `canon/emotions.json`) ; l'Alien
   ajoute l'humeur `neutral`. Toutes les sequences de `libEyes.ts` (clignements, regard,
-  reactions) y jouent ; les sequences propres aux visages (`scan`, `boot`, `hypnotize`...)
-  ne sont pas encore portees. Chaque region possede des lignes entieres et les formes
-  sont symetriques par construction, comme l'exige `canon/VIDEOTEX.md`, ce que
-  `tests/eyes.test.ts` verifie pour toutes les humeurs. URL : `?ecran=yeux&yeux=classic`,
+  reactions) y jouent, et chaque visage a aussi les siennes (`OWN_SEQUENCES`) : Robot
+  `boot`, `error_flash`, `scan`, `talk` (LED de balayage, croix rouges, bouche qui
+  parle), Alien `hypnotize`, `hiss`, `curious` (pupilles dilatees ou fendues), Zyra
+  `scan` et `boot`. `EyesController.ownSequences()` les liste, `play(nom)` les joue, et
+  le mode autonome les mele a ses reactions. Chaque region possede des lignes entieres et
+  les formes sont symetriques par construction, comme l'exige `canon/VIDEOTEX.md`, ce
+  que `tests/eyes.test.ts` verifie pour toutes les humeurs. URL : `?ecran=yeux&yeux=classic`,
   `yeux=robot` ou `yeux=alien`.
+- `src/eyes/libZyraFace.ts`, style *Visage Zyra* : le visage Zyra complet de
+  minitel-face (halo, contour, sourcils, nez, bouche, signal) autour des yeux de
+  `libZyraEyes.ts`, tel que la galerie du firmware Minitel_Sigil le dessine. Couleurs
+  d'humeur fixes, taille x1. Le contour est centre une demi-case a droite des yeux et la
+  bouche une case a droite : c'est le dessin d'origine, garde tel quel pour rester
+  identique au Minitel. URL : `?ecran=yeux&yeux=zyra-visage`.
 - `src/eyes/EyesController.ts` : le moteur de `FaceRenderer`, avec les sequences et le
   mode autonome (clignements de 1 a 6 s dont 40 % doubles, regard de 2,2 a 5,2 s,
   reactions de 9 a 16 s). Le mode autonome est coupe en mouvement reduit.

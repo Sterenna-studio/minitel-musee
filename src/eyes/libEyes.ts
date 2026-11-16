@@ -34,7 +34,19 @@ export type Mood =
   | "calm"
   | "curious"
   | "focused";
-export type EyeOverride = "closed" | "half" | "wink_left" | "wink_right";
+export type EyeOverride =
+  | "closed"
+  | "half"
+  | "wink_left"
+  | "wink_right"
+  // Etats propres a un visage (minitel-face), joues par ses sequences :
+  // LED de balayage et d'erreur et bouche qui parle du Robot, pupilles
+  // dilatees ou fendues de l'Alien. Les autres styles les dessinent ouverts.
+  | "scan"
+  | "error"
+  | "talk"
+  | "dilated"
+  | "slit";
 
 export interface EyeState {
   mood: Mood;
