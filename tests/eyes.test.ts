@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { g1ToMosaic, paintRows } from "../src/videotex/mosaic";
 import { COLS, createScreen, plainText } from "../src/videotex/screen";
 import { buildEyes, initialEyeState, type EyeState, type Mood } from "../src/eyes/libEyes";
-import { EyesController } from "../src/eyes/EyesController";
+import { EyesController, isFaceStyle } from "../src/eyes/EyesController";
+import { buildZyraFace } from "../src/eyes/libZyraFace";
 import { buildZyraEyes } from "../src/eyes/libZyraEyes";
 import { buildFace, FACE_STYLES } from "../src/eyes/libFaces";
 import { targetShapes } from "../src/eyes/SmoothEyes";
@@ -378,5 +379,89 @@ describe("rendu classique (lisse)", () => {
     expect(eyes.getSnapshot().moodLabel).toBe("NEUTRE");
     expect(eyes.key("Delete")).toBe(true);
     expect(eyes.getSnapshot().moodLabel).toBe("COLERE");
+  });
+});
+
+describe("sequences propres et visage Zyra", () => {
+  afterEach(() => vi.useRealTimers());
+  const moods: Mood[] = [
+    "default", "neutral", "happy", "angry", "surprised", "tired",
+    "fear", "disgust", "love", "calm", "curious", "focused",
+  ];
+  const isG1 = (b: number) => (b >= 0x20 && b <= 0x3f) || (b >= 0x60 && b <= 0x7f);
+
+  it("propose a chaque visage ses sequences de minitel-face", () => {
+    expect(new EyesController({ style: "robot" }).ownSequences()).toEqual(["boot", "error_flash", "scan", "talk"]);
+    expect(new EyesController({ style: "alien" }).ownSequences()).toEqual(["hypnotize", "hiss", "curious"]);
+    expect(new EyesController({ style: "zyra" }).ownSequences()).toEqual(["scan", "boot"]);
+    expect(new EyesController({ style: "classic" }).ownSequences()).toEqual([]);
+    expect(new EyesController({ style: "libeyes" }).ownSequences()).toEqual([]);
+  });
+
+  it("dessine les etats propres pendant la sequence, puis revient au repos", async () => {
+    vi.useFakeTimers();
+    const cases: [string, string, string][] = [
+      ["robot", "error_flash", "error"],
+      ["robot", "scan", "scan"],
+      ["robot", "talk", "talk"],
+      ["alien", "hypnotize", "dilated"],
+      ["alien", "hiss", "slit"],
+    ];
+    for (const [style, name, expected] of cases) {
+      const eyes = new EyesController({ style: style as "robot" | "alien" });
+      const rest = JSON.stringify(eyes.getSnapshot().frame.cells);
+      const run = eyes.play(name);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(eyes.getSnapshot().state.eyeState).toBe(expected);
+      expect(JSON.stringify(eyes.getSnapshot().frame.cells)).not.toBe(rest);
+      await vi.advanceTimersByTimeAsync(5000);
+      await run;
+      expect(eyes.getSnapshot().state).toMatchObject({ eyeState: null, moodOverride: null });
+      expect(JSON.stringify(eyes.getSnapshot().frame.cells)).toBe(rest);
+    }
+  });
+
+  it("ignore une sequence inconnue et joue les communes sur tous les styles", async () => {
+    const eyes = new EyesController({ style: "classic" });
+    await eyes.play("hypnotize");
+    expect(eyes.getSnapshot().state.eyeState).toBe(null);
+  });
+
+  it("peint le visage Zyra complet, en G1, dans l'ecran, avec la meme silhouette", () => {
+    const silhouette = (mood: Mood) => {
+      const frame = createScreen("T");
+      paintRows(frame, buildZyraFace({ ...initialEyeState, mood }));
+      // Contour : lignes 4 a 6, 12 a 13, 16 a 18 et 20 (hors yeux, sourcils et bouche).
+      return [4, 5, 6, 12, 13, 16, 17, 18, 20]
+        .map((r) => Array.from({ length: COLS }, (_, i) => cell(frame, r, i + 1).mosaic ?? 0).join(","))
+        .join("|");
+    };
+    const reference = silhouette("default");
+    for (const mood of moods) {
+      expect(silhouette(mood)).toBe(reference);
+      for (const gazeX of [-1, 0, 1])
+        for (const [row, col, , bytes] of buildZyraFace({ ...initialEyeState, mood, gazeX })) {
+          expect(row).toBeGreaterThanOrEqual(1);
+          expect(row).toBeLessThanOrEqual(21);
+          expect(col + bytes.length - 1).toBeLessThanOrEqual(COLS);
+          for (const byte of bytes) expect(isG1(byte)).toBe(true);
+        }
+    }
+  });
+
+  it("garde au visage Zyra ses yeux, ses couleurs d'humeur et sa taille", () => {
+    const eyes = new EyesController({ style: "zyra-visage", palette: "rouge" });
+    eyes.setScale(1.5);
+    expect(eyes.getSnapshot().scale).toBe(1);
+    const yeux = (mood: Mood) => {
+      const frame = createScreen("T");
+      paintRows(frame, buildZyraEyes({ ...initialEyeState, mood }, "AUTO"));
+      return frame;
+    };
+    for (const mood of ["default", "happy", "angry"] as Mood[]) {
+      eyes.setMood(mood);
+      expect(cell(eyes.getSnapshot().frame, 10, 11)).toEqual(cell(yeux(mood), 10, 11));
+    }
+    expect(isFaceStyle("zyra-visage")).toBe(true);
   });
 });

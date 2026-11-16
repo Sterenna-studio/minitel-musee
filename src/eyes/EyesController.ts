@@ -14,7 +14,8 @@ import {
   type SequenceStep,
 } from "./libEyes";
 import { buildZyraEyes } from "./libZyraEyes";
-import { buildFace, isFaceStyle } from "./libFaces";
+import { buildFace, isFaceStyle as isMinitelFace, OWN_SEQUENCES } from "./libFaces";
+import { buildZyraFace } from "./libZyraFace";
 import {
   EMOTIONS,
   EMOTION_COLORS,
@@ -51,11 +52,12 @@ export const EYE_STYLES = [
   { id: "classic", label: "Visage Classic" },
   { id: "robot", label: "Visage Robot" },
   { id: "alien", label: "Visage Alien" },
+  { id: "zyra-visage", label: "Visage Zyra" },
 ] as const;
 export type EyeStyleId = (typeof EYE_STYLES)[number]["id"];
 const isLemegeton = (style: EyeStyleId) => style === "lemegeton" || style === "lemegeton-visage";
-/** Les visages ont leurs couleurs et leur taille : ni palette ni zoom. */
-export { isFaceStyle };
+/** Les visages (Classic, Robot, Alien, Zyra) ont leurs couleurs et leur taille : ni palette ni zoom. */
+export const isFaceStyle = (style: string) => isMinitelFace(style) || style === "zyra-visage";
 /** Cadence du firmware (EYE_RENDER_MIN_MS) : une image toutes les 90 ms au plus. */
 const LEMEGETON_FRAME_MS = 90;
 /** The pointer keeps the gaze this long before the autonomous gaze resumes. */
@@ -175,9 +177,11 @@ export class EyesController {
     const color = EYE_PALETTES.find((p) => p.id === this.palette)?.color ?? "CYAN";
     const frame = createScreen("YEUX DE LEMEGETON", "LEMEGETON");
     if (isLemegeton(this.style)) return this.buildLemegeton(frame, color);
-    const rows = isFaceStyle(this.style)
+    const rows = isMinitelFace(this.style)
       ? buildFace(this.style, this.state)
-      : this.style === "zyra"
+      : this.style === "zyra-visage"
+        ? buildZyraFace(this.state)
+        : this.style === "zyra"
         ? buildZyraEyes(this.state, color)
         : buildEyes(this.state, color === "AUTO" ? "BLANC" : color);
     paintRows(
@@ -316,11 +320,21 @@ export class EyesController {
     if (gazeX !== this.state.gazeX || gazeY !== this.state.gazeY) this.setGaze(gazeX, gazeY);
   }
 
-  /** Joue une sequence ; une nouvelle sequence interrompt la precedente. */
-  async play(name: SequenceName): Promise<void> {
+  /** Sequences propres au style courant (minitel-face), en plus des communes. */
+  ownSequences(): string[] {
+    return Object.keys(OWN_SEQUENCES[this.style] ?? {});
+  }
+
+  /**
+   * Joue une sequence : propre au style si elle existe, sinon commune ; une
+   * nouvelle sequence interrompt la precedente. Un nom inconnu ne fait rien.
+   */
+  async play(name: SequenceName | string): Promise<void> {
+    const steps: SequenceStep[] | undefined =
+      OWN_SEQUENCES[this.style]?.[name] ?? SEQUENCES[name as SequenceName];
+    if (!steps) return;
     const token = ++this.sequenceToken;
     this.running = true;
-    const steps: SequenceStep[] = SEQUENCES[name];
     for (const step of steps) {
       if (token !== this.sequenceToken) return;
       const patch: Partial<EyeState> = {};
@@ -427,7 +441,9 @@ export class EyesController {
   private scheduleReaction() {
     this.later(() => {
       if (!this.autonomous) return;
-      if (!this.running) void this.play(REACTIONS[Math.floor(this.random() * REACTIONS.length)]);
+      // Les sequences propres du visage se melent aux reactions communes.
+      const choices = [...REACTIONS, ...this.ownSequences()];
+      if (!this.running) void this.play(choices[Math.floor(this.random() * choices.length)]);
       this.scheduleReaction();
     }, this.delay(AUTO.reaction));
   }
